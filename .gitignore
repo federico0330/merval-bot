@@ -1,0 +1,14 @@
+# Entorno virtual
+.venv/
+
+# Variables de entorno
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+
+# IMPORTANTE: el Excel registro_merval.xlsx SE VERSIONA, no ignorar *.xlsx
