@@ -11,5 +11,12 @@
 - `*.xlsx` NO va al .gitignore: el Excel `registro_merval.xlsx` se versiona.
 - Token Optimizer no es skill instalada; lo cubre Caveman.
 
+## Excel (openpyxl)
+- Layout: col A = Ticker; cada semana = bloque de 5 cols (Fecha, Apertura, Máximo, Mínimo, Cierre).
+- N de semana se deduce: `(max_column - 1) // 5 + 1`. No se guarda en ningún lado.
+- Cierre semana N en columna `1 + 5*N`; cierre N-1 en `1 + 5*(N-1)`.
+- Verde `90EE90` solo si cierre actual > cierre anterior (N>1).
+- `update_excel` devuelve lista de alcistas: `[{ticker, variacion}]`.
+
 ## Pendiente
-- main.py vacío: falta implementar fetch/update_excel/build_message/send_telegram.
+- Falta implementar build_message y send_telegram en main.py.
