@@ -18,5 +18,11 @@
 - Verde `90EE90` solo si cierre actual > cierre anterior (N>1).
 - `update_excel` devuelve lista de alcistas: `[{ticker, variacion}]`.
 
+## GitHub Actions
+- Workflow `.github/workflows/check.yml`: cron `0 13 * * 1` (lunes 13:00 UTC) + workflow_dispatch.
+- Python 3.11 (el local es 3.14, pero CI fija 3.11).
+- Commit del Excel con `github-actions[bot]`; usa email `41898282+github-actions[bot]@users.noreply.github.com`.
+- Step de commit chequea `git diff --staged --quiet` para no commitear si no hubo cambios.
+
 ## Pendiente
-- Falta implementar build_message y send_telegram en main.py.
+- main.py completo y probado (envío Telegram OK). Falta: init de repo git y subir a GitHub.

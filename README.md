@@ -50,5 +50,36 @@ Telegram.
 
 ## Automatización
 
-Hay un workflow de GitHub Actions que corre el bot los lunes 13:00 UTC y commitea
-el Excel actualizado. El token y el chat ID se guardan como Secrets del repo.
+Hay un workflow de GitHub Actions que corre el bot los lunes 13:00 UTC (10:00 en
+Argentina) y commitea el Excel actualizado. El token y el chat ID se guardan como
+Secrets del repo.
+
+## Despliegue
+
+### 1. Cargar los secrets
+
+El workflow necesita el token del bot y tu chat ID. Nunca los pongas en el código:
+van como Secrets del repositorio.
+
+1. En GitHub, entrá al repo y abrí **Settings**.
+2. En el menú lateral: **Secrets and variables → Actions**.
+3. Tocá **New repository secret** y cargá el primero:
+   - Name: `TELEGRAM_TOKEN`
+   - Secret: el token de tu bot
+4. Repetí con el segundo:
+   - Name: `CHAT_ID`
+   - Secret: tu chat ID
+
+Los nombres tienen que ser exactos, el workflow los busca así.
+
+### 2. Disparar el workflow a mano la primera vez
+
+No hace falta esperar al lunes para probarlo:
+
+1. Andá a la pestaña **Actions** del repo.
+2. En la lista de la izquierda elegí **Cierre semanal Merval**.
+3. A la derecha vas a ver el botón **Run workflow**. Tocalo y confirmá.
+4. En unos segundos aparece la corrida. Si todo salió bien, te llega el mensaje a
+   Telegram y el `registro_merval.xlsx` queda commiteado en el repo.
+
+A partir de ahí corre solo cada lunes.
