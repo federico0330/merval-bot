@@ -1,9 +1,13 @@
 import os
 from datetime import date, timedelta
 
+import requests
 import yfinance as yf
+from dotenv import load_dotenv
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import PatternFill
+
+load_dotenv()
 
 VERDE = PatternFill(start_color='90EE90', end_color='90EE90', fill_type='solid')
 
@@ -117,22 +121,64 @@ def update_excel(data, filename='registro_merval.xlsx'):
     return alcistas
 
 
-if __name__ == '__main__':
-    resultados = fetch_weekly_data(TICKERS)
+def build_message(data, alcistas):
+    """Arma el mensaje en HTML para Telegram con el cierre semanal."""
+    fecha = next((v['fecha'] for v in data.values() if v), 'sin datos')
 
-    header = f"{'Ticker':<10} {'Fecha':<12} {'Open':>10} {'High':>10} {'Low':>10} {'Close':>10}"
-    print(header)
-    print('-' * len(header))
+    lineas = [
+        '📊 <b>Cierre semanal Merval</b>',
+        f'Semana del {fecha}',
+        '',
+    ]
 
-    for ticker, vela in resultados.items():
-        if vela is None:
-            print(f"{ticker:<10} {'sin datos':<12}")
-            continue
-        print(
-            f"{ticker:<10} {vela['fecha']:<12} "
-            f"{vela['open']:>10.2f} {vela['high']:>10.2f} "
-            f"{vela['low']:>10.2f} {vela['close']:>10.2f}"
+    if alcistas:
+        lineas.append(
+            '🟢 <b>ATENCIÓN</b> — estas acciones cerraron por encima de la semana pasada:'
         )
+        for item in alcistas:
+            vela = data.get(item['ticker'])
+            cierre = vela['close'] if vela else '-'
+            lineas.append(
+                f"• <b>{item['ticker']}</b> — ${cierre} (+{item['variacion']}%)"
+            )
+    else:
+        lineas.append('Ninguna acción cerró alcista esta semana')
 
-    alcistas = update_excel(resultados)
-    print(f"\nAlcistas: {alcistas}")
+    lineas.append('')
+    lineas.append('<b>Resumen de cierres</b>')
+    for ticker, vela in data.items():
+        cierre = vela['close'] if vela else 'sin datos'
+        lineas.append(f'• {ticker} — ${cierre}')
+
+    return '\n'.join(lineas)
+
+
+def send_telegram(message):
+    """Envía el mensaje al chat de Telegram configurado en las variables de entorno."""
+    token = os.getenv('TELEGRAM_TOKEN')
+    chat_id = os.getenv('CHAT_ID')
+
+    if not token or not chat_id:
+        raise RuntimeError('Faltan TELEGRAM_TOKEN o CHAT_ID en el entorno')
+
+    url = f'https://api.telegram.org/bot{token}/sendMessage'
+    resp = requests.post(
+        url,
+        data={'chat_id': chat_id, 'text': message, 'parse_mode': 'HTML'},
+        timeout=15,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+def main():
+    data = fetch_weekly_data(TICKERS)
+    alcistas = update_excel(data)
+    message = build_message(data, alcistas)
+
+    print(message)
+    send_telegram(message)
+
+
+if __name__ == '__main__':
+    main()
