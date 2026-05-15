@@ -27,6 +27,7 @@ jobs:
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
+          CHAT_ID_ADMIN: ${{ secrets.CHAT_ID_ADMIN }}
         run: python main.py
 
       - name: Commit del Excel actualizado

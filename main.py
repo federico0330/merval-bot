@@ -1,4 +1,5 @@
 import os
+import traceback
 from datetime import date, timedelta
 
 import requests
@@ -153,13 +154,12 @@ def build_message(data, alcistas):
     return '\n'.join(lineas)
 
 
-def send_telegram(message):
-    """Envía el mensaje al chat de Telegram configurado en las variables de entorno."""
+def send_telegram(message, chat_id):
+    """Envía un mensaje HTML al chat de Telegram indicado."""
     token = os.getenv('TELEGRAM_TOKEN')
-    chat_id = os.getenv('CHAT_ID')
 
     if not token or not chat_id:
-        raise RuntimeError('Faltan TELEGRAM_TOKEN o CHAT_ID en el entorno')
+        raise RuntimeError('Faltan TELEGRAM_TOKEN o el chat_id de destino')
 
     url = f'https://api.telegram.org/bot{token}/sendMessage'
     resp = requests.post(
@@ -171,13 +171,37 @@ def send_telegram(message):
     return resp.json()
 
 
-def main():
-    data = fetch_weekly_data(TICKERS)
-    alcistas = update_excel(data)
-    message = build_message(data, alcistas)
+def notify_all(message):
+    """Manda el reporte al destinatario principal y al admin si está configurado."""
+    chat_id = os.getenv('CHAT_ID')
+    chat_id_admin = os.getenv('CHAT_ID_ADMIN')
 
-    print(message)
-    send_telegram(message)
+    if not chat_id:
+        raise RuntimeError('Falta CHAT_ID en el entorno')
+
+    send_telegram(message, chat_id)
+    if chat_id_admin and chat_id_admin != chat_id:
+        send_telegram(message, chat_id_admin)
+
+
+def main():
+    try:
+        data = fetch_weekly_data(TICKERS)
+        alcistas = update_excel(data)
+        message = build_message(data, alcistas)
+
+        print(message)
+        notify_all(message)
+    except Exception:
+        chat_id_admin = os.getenv('CHAT_ID_ADMIN')
+        if chat_id_admin:
+            tb = traceback.format_exc()
+            aviso = f'⚠️ <b>Error en merval-bot</b>\n<pre>{tb}</pre>'
+            try:
+                send_telegram(aviso, chat_id_admin)
+            except Exception:
+                pass  # si falla el aviso, no tapar el error original
+        raise
 
 
 if __name__ == '__main__':
