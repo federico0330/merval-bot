@@ -1,3 +1,4 @@
+import html
 import os
 import traceback
 from datetime import date, timedelta
@@ -30,36 +31,70 @@ def fetch_weekly_data(tickers):
 
     data = {}
     for ticker in tickers:
-        df = yf.Ticker(ticker).history(period='3mo', interval='1wk')
+        # Cada ticker se aísla: si yfinance falla en uno (red, rate limit,
+        # datos raros) el resto del reporte igual sale.
+        try:
+            df = yf.Ticker(ticker).history(period='3mo', interval='1wk')
 
-        if df.empty:
+            if df.empty:
+                data[ticker] = None
+                continue
+
+            closed = df[[d.date() < current_monday for d in df.index]]
+            if closed.empty:
+                data[ticker] = None
+                continue
+
+            last = closed.iloc[-1]
+            data[ticker] = {
+                'fecha': closed.index[-1].date().isoformat(),
+                'open': round(float(last['Open']), 2),
+                'high': round(float(last['High']), 2),
+                'low': round(float(last['Low']), 2),
+                'close': round(float(last['Close']), 2),
+            }
+        except Exception:
             data[ticker] = None
-            continue
 
-        closed = df[[d.date() < current_monday for d in df.index]]
-        if closed.empty:
-            data[ticker] = None
-            continue
-
-        last = closed.iloc[-1]
-        data[ticker] = {
-            'fecha': closed.index[-1].date().isoformat(),
-            'open': round(float(last['Open']), 2),
-            'high': round(float(last['High']), 2),
-            'low': round(float(last['Low']), 2),
-            'close': round(float(last['Close']), 2),
-        }
+    # Si NINGÚN ticker trajo datos, algo serio falló: fallar fuerte para que
+    # el admin se entere, en vez de mandar un reporte vacío como si nada.
+    if not any(data.values()):
+        raise RuntimeError('yfinance no devolvió datos para ningún ticker')
 
     return data
 
 
-def update_excel(data, filename='registro_merval.xlsx'):
-    """Registra la semana en el Excel agregando 5 columnas y devuelve los alcistas.
+def _calcular_alcistas(ws, n):
+    """Lista los tickers cuyo cierre de la semana n superó al de la n-1."""
+    if n < 2:
+        return []
 
-    Cada corrida suma un bloque de 5 columnas (fecha + OHLC). El número de semana
-    se deduce contando los bloques ya escritos. Si hay semana previa, el cierre
-    que la supera se pinta de verde.
+    col_close = 1 + 5 * n
+    col_close_prev = 1 + 5 * (n - 1)
+
+    alcistas = []
+    for fila in range(2, ws.max_row + 1):
+        ticker = ws.cell(row=fila, column=1).value
+        cierre = ws.cell(row=fila, column=col_close).value
+        cierre_prev = ws.cell(row=fila, column=col_close_prev).value
+        if not ticker:
+            continue
+        if isinstance(cierre, (int, float)) and isinstance(cierre_prev, (int, float)):
+            if cierre > cierre_prev:
+                variacion = (cierre - cierre_prev) / cierre_prev * 100
+                alcistas.append({'ticker': ticker, 'variacion': round(variacion, 2)})
+    return alcistas
+
+
+def update_excel(data, filename='registro_merval.xlsx'):
+    """Registra la semana en el Excel y devuelve los alcistas.
+
+    Cada corrida suma un bloque de 5 columnas (fecha + OHLC). Es idempotente:
+    si la última semana registrada ya es la de estos datos, no agrega nada,
+    así un re-run (manual, reintento de Actions) no duplica columnas.
     """
+    fecha_actual = next((v['fecha'] for v in data.values() if v), None)
+
     if os.path.exists(filename):
         wb = load_workbook(filename)
         ws = wb.active
@@ -70,24 +105,28 @@ def update_excel(data, filename='registro_merval.xlsx'):
         for i, ticker in enumerate(data, start=2):
             ws.cell(row=i, column=1, value=ticker)
 
-    # Bloques de 5 columnas ya escritos -> próxima semana
     semanas_previas = (ws.max_column - 1) // 5
-    n = semanas_previas + 1
 
-    base = 1 + 5 * (semanas_previas)  # última columna ocupada
-    col_fecha = base + 1
-    col_open = base + 2
-    col_high = base + 3
-    col_low = base + 4
-    col_close = base + 5
-    col_close_prev = base if n > 1 else None
+    # Idempotencia: si la última semana ya tiene esta fecha, no duplicar el
+    # bloque. Se recalculan los alcistas desde lo que ya está escrito.
+    if semanas_previas >= 1 and fecha_actual:
+        col_fecha_ultima = 2 + 5 * (semanas_previas - 1)
+        fechas_ultima = {
+            ws.cell(row=f, column=col_fecha_ultima).value
+            for f in range(2, ws.max_row + 1)
+        }
+        if fecha_actual in fechas_ultima:
+            return _calcular_alcistas(ws, semanas_previas)
+
+    n = semanas_previas + 1
+    base = 1 + 5 * semanas_previas  # última columna ocupada
 
     encabezados = [
-        (col_fecha, f'Semana {n} - Fecha'),
-        (col_open, f'Semana {n} - Apertura'),
-        (col_high, f'Semana {n} - Máximo'),
-        (col_low, f'Semana {n} - Mínimo'),
-        (col_close, f'Semana {n} - Cierre'),
+        (base + 1, f'Semana {n} - Fecha'),
+        (base + 2, f'Semana {n} - Apertura'),
+        (base + 3, f'Semana {n} - Máximo'),
+        (base + 4, f'Semana {n} - Mínimo'),
+        (base + 5, f'Semana {n} - Cierre'),
     ]
     for col, texto in encabezados:
         ws.cell(row=1, column=col, value=texto)
@@ -99,24 +138,19 @@ def update_excel(data, filename='registro_merval.xlsx'):
         if nombre:
             filas[nombre] = fila
 
-    alcistas = []
     for ticker, vela in data.items():
         if vela is None or ticker not in filas:
             continue
         fila = filas[ticker]
+        ws.cell(row=fila, column=base + 1, value=vela['fecha'])
+        ws.cell(row=fila, column=base + 2, value=vela['open'])
+        ws.cell(row=fila, column=base + 3, value=vela['high'])
+        ws.cell(row=fila, column=base + 4, value=vela['low'])
+        ws.cell(row=fila, column=base + 5, value=vela['close'])
 
-        ws.cell(row=fila, column=col_fecha, value=vela['fecha'])
-        ws.cell(row=fila, column=col_open, value=vela['open'])
-        ws.cell(row=fila, column=col_high, value=vela['high'])
-        ws.cell(row=fila, column=col_low, value=vela['low'])
-        celda_close = ws.cell(row=fila, column=col_close, value=vela['close'])
-
-        if col_close_prev is not None:
-            cierre_prev = ws.cell(row=fila, column=col_close_prev).value
-            if isinstance(cierre_prev, (int, float)) and vela['close'] > cierre_prev:
-                celda_close.fill = VERDE
-                variacion = (vela['close'] - cierre_prev) / cierre_prev * 100
-                alcistas.append({'ticker': ticker, 'variacion': round(variacion, 2)})
+    alcistas = _calcular_alcistas(ws, n)
+    for item in alcistas:
+        ws.cell(row=filas[item['ticker']], column=base + 5).fill = VERDE
 
     wb.save(filename)
     return alcistas
@@ -167,7 +201,14 @@ def send_telegram(message, chat_id):
         data={'chat_id': chat_id, 'text': message, 'parse_mode': 'HTML'},
         timeout=15,
     )
-    resp.raise_for_status()
+    # No usar raise_for_status(): su mensaje incluye la URL completa, y la URL
+    # lleva el token del bot. Eso terminaría en los logs de Actions y en el
+    # aviso de error a Telegram. Se arma un error propio sin el token.
+    if not resp.ok:
+        raise RuntimeError(
+            f'Telegram respondió {resp.status_code} al enviar a {chat_id}: '
+            f'{resp.text[:300]}'
+        )
     return resp.json()
 
 
@@ -196,7 +237,19 @@ def main():
         chat_id_admin = os.getenv('CHAT_ID_ADMIN')
         if chat_id_admin:
             tb = traceback.format_exc()
+
+            # Si el token aparece en el traceback, borrarlo antes de mandarlo.
+            token = os.getenv('TELEGRAM_TOKEN')
+            if token:
+                tb = tb.replace(token, '***')
+
+            # Telegram corta a 4096 caracteres y el parser HTML rechaza '<' y
+            # '&' sueltos. Sin escapar ni recortar, el aviso de error fallaría
+            # justo cuando más se lo necesita. Se toma el final del traceback,
+            # que es donde está el error real.
+            tb = html.escape(tb[-3000:])
             aviso = f'⚠️ <b>Error en merval-bot</b>\n<pre>{tb}</pre>'
+
             try:
                 send_telegram(aviso, chat_id_admin)
             except Exception:
