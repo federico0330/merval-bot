@@ -19,8 +19,12 @@
 - Layout: col A = Ticker; cada semana = bloque de 5 cols (Fecha, Apertura, Máximo, Mínimo, Cierre).
 - N de semana se deduce: `(max_column - 1) // 5 + 1`. No se guarda en ningún lado.
 - Cierre semana N en columna `1 + 5*N`; cierre N-1 en `1 + 5*(N-1)`.
-- Verde `90EE90` solo si cierre actual > cierre anterior (N>1).
-- `update_excel` devuelve lista de alcistas: `[{ticker, variacion}]`.
+- Verde `90EE90` en celda de cierre solo si cierre actual > cierre anterior (N>1).
+- Naranja `FFA500` en celda de mínimo: patrón "toma de liquidez" (barrida) →
+  alcista que ADEMÁS perforó el mínimo anterior (`mínimo_x < mínimo_x-1`).
+  Mínimo semana N en columna `5*N` (= `col_cierre - 1`).
+- `update_excel` devuelve lista de alcistas: `[{ticker, variacion, barrida}]`.
+  `barrida` es bool; en el mensaje de Telegram se marca con 🔥 + leyenda.
 
 ## GitHub Actions
 - Workflow `.github/workflows/check.yml`: cron `30 21 * * 5` (viernes 21:30 UTC =

@@ -12,6 +12,7 @@ from openpyxl.styles import PatternFill
 load_dotenv()
 
 VERDE = PatternFill(start_color='90EE90', end_color='90EE90', fill_type='solid')
+NARANJA = PatternFill(start_color='FFA500', end_color='FFA500', fill_type='solid')
 
 TICKERS = [
     'GGAL.BA', 'YPFD.BA', 'PAMP.BA', 'BMA.BA', 'TXAR.BA',
@@ -74,12 +75,18 @@ def fetch_weekly_data(tickers):
 
 
 def _calcular_alcistas(ws, n):
-    """Lista los tickers cuyo cierre de la semana n superó al de la n-1."""
+    """Lista los tickers cuyo cierre de la semana n superó al de la n-1.
+
+    Cada alcista trae un flag 'barrida' (toma de liquidez): es True cuando,
+    además de cerrar arriba, el mínimo de la semana n perforó al de la n-1.
+    """
     if n < 2:
         return []
 
     col_close = 1 + 5 * n
     col_close_prev = 1 + 5 * (n - 1)
+    col_min = col_close - 1
+    col_min_prev = col_close_prev - 1
 
     alcistas = []
     for fila in range(2, ws.max_row + 1):
@@ -91,7 +98,18 @@ def _calcular_alcistas(ws, n):
         if isinstance(cierre, (int, float)) and isinstance(cierre_prev, (int, float)):
             if cierre > cierre_prev:
                 variacion = (cierre - cierre_prev) / cierre_prev * 100
-                alcistas.append({'ticker': ticker, 'variacion': round(variacion, 2)})
+                minimo = ws.cell(row=fila, column=col_min).value
+                minimo_prev = ws.cell(row=fila, column=col_min_prev).value
+                barrida = (
+                    isinstance(minimo, (int, float))
+                    and isinstance(minimo_prev, (int, float))
+                    and minimo < minimo_prev
+                )
+                alcistas.append({
+                    'ticker': ticker,
+                    'variacion': round(variacion, 2),
+                    'barrida': barrida,
+                })
     return alcistas
 
 
@@ -159,7 +177,10 @@ def update_excel(data, filename='registro_merval.xlsx'):
 
     alcistas = _calcular_alcistas(ws, n)
     for item in alcistas:
-        ws.cell(row=filas[item['ticker']], column=base + 5).fill = VERDE
+        fila = filas[item['ticker']]
+        ws.cell(row=fila, column=base + 5).fill = VERDE
+        if item['barrida']:
+            ws.cell(row=fila, column=base + 4).fill = NARANJA
 
     wb.save(filename)
     return alcistas
@@ -182,8 +203,16 @@ def build_message(data, alcistas):
         for item in alcistas:
             vela = data.get(item['ticker'])
             cierre = vela['close'] if vela else '-'
+            fuego = ' 🔥' if item['barrida'] else ''
             lineas.append(
-                f"• <b>{item['ticker']}</b> — ${cierre} (+{item['variacion']}%)"
+                f"• <b>{item['ticker']}</b> — ${cierre} (+{item['variacion']}%){fuego}"
+            )
+        if any(item['barrida'] for item in alcistas):
+            lineas.append('')
+            lineas.append(
+                '🔥 toma de liquidez: la acción perforó el mínimo de la semana '
+                'anterior y aun así cerró arriba. El mercado podría estar girando '
+                'al alza.'
             )
     else:
         lineas.append('Ninguna acción cerró alcista esta semana')
