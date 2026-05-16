@@ -20,14 +20,23 @@ TICKERS = [
 
 
 def fetch_weekly_data(tickers):
-    """Baja velas semanales y devuelve la última completamente cerrada por ticker.
+    """Baja velas semanales y devuelve la última vela cerrada por ticker.
 
-    Una vela semanal queda cerrada recién cuando termina su semana. yfinance
-    incluye la semana en curso como última fila, así que se descarta todo lo
-    que pertenezca a la semana actual o posterior.
+    El bot corre los viernes después del cierre del mercado. A esa altura la
+    vela de la semana en curso ya es definitiva (no quedan ruedas hasta el
+    lunes), así que entra en el reporte. De lunes a jueves se la descarta, por
+    si alguien dispara una corrida manual a mitad de semana con datos a medias.
     """
     today = date.today()
     current_monday = today - timedelta(days=today.weekday())
+
+    # yfinance indexa cada vela semanal por el lunes de su semana. El límite
+    # define hasta qué vela se considera cerrada: los viernes/fin de semana
+    # incluye la semana en curso; de lunes a jueves solo las semanas pasadas.
+    if today.weekday() >= 4:  # viernes, sábado o domingo
+        limite = current_monday + timedelta(days=1)
+    else:
+        limite = current_monday
 
     data = {}
     for ticker in tickers:
@@ -40,7 +49,7 @@ def fetch_weekly_data(tickers):
                 data[ticker] = None
                 continue
 
-            closed = df[[d.date() < current_monday for d in df.index]]
+            closed = df[[d.date() < limite for d in df.index]]
             if closed.empty:
                 data[ticker] = None
                 continue
