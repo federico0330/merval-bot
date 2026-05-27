@@ -40,22 +40,32 @@
 
 ### Funciones Obligatorias
 - `fetch_weekly_data(tickers)` → devuelve dict con última vela semanal cerrada
-- `update_excel(data, filename='registro_merval.xlsx')` → maneja creación, columnas dinámicas y resaltado verde
+- `update_excel(data, filename='registro_merval.xlsx')` → maneja creación, columnas dinámicas, resaltado verde (alcista) y naranja (toma de liquidez)
+- `_calcular_alcistas(ws, n)` → función pura, lista alcistas con flag de barrida
 - `build_message(data, alcistas)` → mensaje en HTML para Telegram
-- `send_telegram(message)` → usa `requests` y variables de entorno
-- Flujo principal: fetch → update_excel → build_message → send_telegram
+- `send_telegram(message, chat_id)` → usa `requests` y variables de entorno
+- `notify_all(message)` → manda al chat principal y al admin si está configurado
+- Flujo principal: fetch → update_excel → build_message → notify_all
 
 ### Requisitos del Excel
 - Detectar automáticamente la próxima "Semana N"
-- Agregar siempre 5 columnas nuevas por ejecución
-- Resaltado verde (`90EE90`) solo cuando el cierre actual > cierre anterior
+- Agregar siempre 5 columnas nuevas por ejecución (fecha + OHLC)
+- Resaltado verde (`90EE90`) en el cierre cuando supera al de la semana anterior
+- Resaltado naranja (`FFA500`) en el mínimo cuando hubo toma de liquidez
+- Idempotente: si la fecha actual ya existe en el último bloque, no agregar columnas
 - Mantener formato y datos existentes
 
 ### GitHub Actions
-- Workflow en `.github/workflows/check.yml`
-- Ejecutar los lunes a las 13:00 UTC
+- Workflow de ejecución en `.github/workflows/check.yml`: viernes 21:30 UTC (post-cierre)
+- Workflow de tests en `.github/workflows/tests.yml`: corre en cada push y PR a main
 - Commit del Excel actualizado usando github-actions[bot]
-- Usar Secrets para TELEGRAM_TOKEN y CHAT_ID
+- Secrets necesarios: TELEGRAM_TOKEN, CHAT_ID, CHAT_ID_ADMIN (opcional)
+
+### Testing
+- Tests con pytest en `tests/` (importan directamente de `main.py`)
+- Cobertura sobre lógica determinística: Excel, mensajes, contrato de red mockeado
+- yfinance y requests se mockean con `unittest.mock.patch`
+- Comando: `pytest -v` (requiere `requirements-dev.txt` instalado)
 
 ## Flujo de Trabajo Recomendado
 
