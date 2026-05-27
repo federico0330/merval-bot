@@ -5,29 +5,29 @@ traducen a problemas de retail multilocal.
 
 ## Qué demuestra el proyecto
 
-**Automatización confiable contra APIs externas.** El bot orquesta yfinance,
-openpyxl y la API de Telegram con manejo defensivo de fallos: aísla errores
-por ticker (si yfinance se cae en uno, los otros igual entran al reporte),
-revienta fuerte solo si TODO falla, y manda un traceback al admin en caso de
-error catastrófico.
+El bot orquesta yfinance, openpyxl y la API de Telegram con manejo
+defensivo: si yfinance falla en un ticker, los otros igual entran al
+reporte; solo revienta fuerte cuando fallan todos. Si algo se rompe a
+mitad del flujo, el admin recibe el traceback por Telegram.
 
-**Idempotencia.** El Excel es la fuente de verdad y se versiona en el repo.
-Cada corrida chequea si la fecha ya existe en el último bloque antes de
-agregar columnas, así un re-run del workflow no contamina el archivo.
+El Excel es la fuente de verdad y se versiona en el repo. Cada corrida
+chequea si la fecha ya está en el último bloque antes de agregar
+columnas, así un re-run del workflow no contamina el archivo. Es
+idempotente por fecha.
 
-**Manejo de secrets.** El token nunca se loguea: la función `send_telegram`
-arma su propia excepción en lugar de usar `raise_for_status()` (que incluiría
-la URL con el token), y el handler de error escapa el traceback antes de
-mandárselo al admin por Telegram.
+El token de Telegram no aparece en ningún log. La función
+`send_telegram` no usa `raise_for_status()` (que incluiría la URL con el
+token en el mensaje de error); arma su propia excepción. El handler del
+error global escapa el traceback antes de mandárselo al admin.
 
-**CI/CD productivo.** Dos workflows de GitHub Actions: uno corre el bot los
-viernes 21:30 UTC (post-cierre del mercado) y commitea el Excel; el otro
+Hay dos workflows de GitHub Actions. Uno corre el bot los viernes 21:30
+UTC (post-cierre del mercado) y commitea el Excel actualizado. El otro
 corre la suite de tests en cada push y PR a `main`.
 
-**Tests sobre lógica determinística.** 20 tests con pytest cubren cálculo de
-alcistas, detección del patrón "toma de liquidez", idempotencia del Excel,
-formato del mensaje y contrato de red mockeado (la red real nunca se toca en
-los tests).
+Los 20 tests con pytest cubren la lógica determinística: cálculo de
+alcistas, detección de toma de liquidez, idempotencia del Excel, formato
+del mensaje y el contrato de red mockeado. La red real nunca se toca en
+los tests.
 
 ## Cómo se traduce a retail multilocal
 
@@ -42,14 +42,17 @@ los tests).
 
 ## Stack y decisiones
 
-- **Python 3.11+** sin frameworks pesados — el proyecto se mantiene chico,
-  fácil de auditar, fácil de extender.
-- **openpyxl en lugar de pandas** para escribir el Excel: el coste de pandas
-  no se justifica para escribir bloques pequeños, y openpyxl da control fino
-  sobre el formato (rellenos de celda, encabezados dinámicos).
-- **python-dotenv** para configuración local, **Secrets de GitHub** para
-  producción — un solo lugar donde cambiar el token.
-- **pytest** con mocks de `unittest.mock` para no tocar la red en tests.
+Python 3.11 sin frameworks pesados, así el proyecto se mantiene chico y
+fácil de auditar.
+
+openpyxl en lugar de pandas para escribir el Excel: el peso de pandas no
+se justifica para bloques chicos, y openpyxl da control fino sobre el
+formato (rellenos de celda, encabezados dinámicos).
+
+`python-dotenv` para configuración local y Secrets de GitHub para
+producción. Un solo lugar donde cambiar el token.
+
+`pytest` con mocks de `unittest.mock` para no tocar la red en los tests.
 
 ## Lo que pulí en esta entrega
 
